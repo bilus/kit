@@ -1,47 +1,19 @@
 (ns kit-generator.core-test
   (:require
    [clojure.string :as str]
-   [clojure.test :refer [deftest is testing are]]
-   [kit-generator.generator-test]
+   [clojure.test :refer [deftest is are]]
    [kit-generator.injections]
    [kit-generator.io :as io]
+   [kit-generator.project :refer [project-root module-installed? prepare-project]]
    [kit.api :as kit]))
 
-(def source-folder "test/resources")
-;; It must be this path because module asset paths are relative to the current
-;; working directory and modules under test/resources/modules/ write to
-;; test/resources/generated/**
-(def project-root "test/resources/generated")
+(declare match?)
 
-(defn module-installed? [module-key]
-  (when-let [install-log (io/read-edn-safe (str project-root "/modules/install-log.edn"))]
-    (= :success (get install-log module-key))))
-
-(defn prepare-project
-  "Sets up a test project in `project-root` and returns the path to the kit.edn file.
-   The project has already synced modules and kit.edn but is otherwise empty."
-  []
-  (let [project-modules (str project-root "/modules/")
-        ctx             {:ns-name      "myapp"
-                         :sanitized    "myapp"
-                         :name         "myapp"
-                         :project-root project-root
-                         :modules      {:root         project-modules
-                                        :repositories {:root (str project-root "/modules")
-                                                       :url  "https://github.com/foo/bar/never/used"
-                                                       :tag  "master"
-                                                       :name "kit"}}}
-        kit-edn-path    (str project-root "/kit.edn")]
-    (io/delete-folder project-root)
-    (io/clone-folder (str source-folder "/modules/")
-                     project-modules
-                     {:filter #(not (str/ends-with? % "install-log.edn"))})
-    (io/write-edn ctx kit-edn-path)
-    kit-edn-path))
+(def module-repo-path "test/resources/modules")
 
 (defn test-install-module*
   [module-key opts expected-files]
-  (let [kit-edn-path (prepare-project)]
+  (let [kit-edn-path (prepare-project module-repo-path)]
     (is (not (module-installed? module-key)))
     (is (= :done (kit/install-module module-key kit-edn-path opts)))
     (is (module-installed? module-key))
@@ -49,7 +21,7 @@
                                       expected-files
                                       {:filter #(not (str/starts-with? % "modules/"))})))))
 
-(deftest test-install-meta-module
+(deftest test-install-module
   (are [module-key opts expected-files] (test-install-module* module-key opts expected-files)
     :meta {}                                {"resources/public/css/app.css"        []
                                              "kit.edn"                             []}
@@ -72,11 +44,55 @@
                                              "src/clj/myapp/db/migratus.clj"       []
                                              "src/clj/myapp/db/migrations/001.clj" []
                                              "kit.edn"                             []}
+    :meta {:accept-hooks? true
+           :feature-flag :with-hooks}       {"post-install.txt"                    []
+                                             "kit.edn"                             []}
 
 ;;
     ))
 
 ;; TODO: Should feature-requires be transient? If so, add tests for that.
 
+(defn test-dependency-tree*
+  [module-key opts expected-tree]
+  (let [kit-edn-path (prepare-project module-repo-path)
+        tree (kit/dependency-tree module-key kit-edn-path opts)]
+    (is (match? expected-tree tree))))
+
+(deftest test-dependency-tree
+  (are [module-key opts expected-tree] (test-dependency-tree* module-key opts expected-tree)
+    :meta {}                                {:module/key          :meta
+                                             :module/config       map?
+                                             :module/opts         {}
+                                             :module/dependencies []}
+    :meta {:feature-flag :extras}           {:module/key          :meta
+                                             :module/config       map?
+                                             :module/opts         {:feature-flag :extras}
+                                             :module/dependencies [{:module/key          :db
+                                                                    :module/config       map?
+                                                                    :module/opts         {}
+                                                                    :module/dependencies []}]}
+    :meta {:feature-flag :full}             {:module/key           :meta
+                                             :module/config        map?
+                                             :module/opts          {:feature-flag :full}
+                                             :module/dependencies  [{:module/key          :db
+                                                                     :module/config       map?
+                                                                     :module/opts         {}
+                                                                     :module/dependencies []}]}
+    :meta {:feature-flag :full
+           :db {:feature-flag :migrations}} {:module/key           :meta
+                                             :module/config        map?
+                                             :module/opts          {:feature-flag :full}
+                                             :module/dependencies  [{:module/key          :db
+                                                                     :module/config       map?
+                                                                     :module/opts         {:feature-flag :migrations}
+                                                                     :module/dependencies [{:module/key          :migratus
+                                                                                            :module/config       map?
+                                                                                            :module/opts         {}
+                                                                                            :module/dependencies []}]}]}
+;
+    ))
 (comment
-  (clojure.test/run-tests 'kit-generator.core-test))
+  (clojure.test/run-tests 'kit-generator.core-test)
+  (kit/print-dependencies :meta (prepare-project module-repo-path) {:feature-flag :full
+                                                                    :db          {:feature-flag :migrations}}))

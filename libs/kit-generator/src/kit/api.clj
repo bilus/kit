@@ -10,7 +10,7 @@
 
 ;; TODO: Add docstrings
 
-(defn- read-ctx
+(defn read-ctx
   [path]
   (assert (not (str/blank? path)))
   (-> path
@@ -84,6 +84,29 @@
   (let [ctx (modules/load-modules (read-ctx "kit.edn"))]
     (modules/list-modules ctx))
   :done)
+
+(defn dependency-tree
+  ([module-key]
+   (dependency-tree module-key {:feature-flag :default}))
+  ([module-key opts]
+   (dependency-tree module-key "kit.edn" opts))
+  ([module-key kit-edn-path opts]
+   (let [ctx (modules/load-modules (read-ctx kit-edn-path))]
+     (deps/dependency-tree ctx module-key (flat-module-options opts module-key)))))
+
+(defn print-dependencies
+  "Prints the dependency tree for a module in a simple format."
+  ([module-key]
+   (print-dependencies module-key {:feature-flag :default}))
+  ([module-key opts]
+   (print-dependencies module-key "kit.edn" opts))
+  ([module-key kit-edn-path opts]
+   (letfn [(print-tree [{:module/keys [key opts dependencies]} indent]
+             (println (str indent key " " opts))
+             (doseq [dep dependencies]
+               (print-tree dep (str indent "  "))))]
+     (print-tree (dependency-tree module-key kit-edn-path opts) ""))
+   :done))
 
 (defn install-module
   "Installs a kit module into the current project or the project specified by a
