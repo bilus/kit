@@ -17,44 +17,6 @@
       (slurp)
       (io/str->edn)))
 
-(defn- log-install-dependency [module-key feature-flag deps]
-  (print "Installing module" module-key)
-
-  (when-let [extras (not-empty (cond-> []
-                                 (not= :default feature-flag) (conj (str " - feature flag:" feature-flag))
-                                 (seq deps) (conj (str " - requires:" (str/join ",")))))]
-    (print (str "(" (str/join "; " extras) ")"))))
-
-(defn- log-missing-module [module-key]
-  (println "ERROR: no module found with name:" module-key))
-
-(defn- install-dependency
-  "Installs a module and its dependencies recursively. Asumes ctx has loaded :modules.
-   Note that `opts` have a different schema than the one passed to `install-module`,
-   the latter being preserved for backwards compatibility. Here `opts` is a map of
-   module-key to module-specific options.
-
-   For example, let's say `:html` is the main module. It would still be on the same level
-   as `:auth`, its dependency:
-
-   ```clojure
-   {:html {:feature-flag :default}
-    :auth {:feature-flag :oauth}}
-   ```
-
-   See flat-module-options for more details."
-  [{:keys [modules] :as ctx} module-key opts]
-  (if (modules/module-exists? ctx module-key)
-    (let [{:keys [module-config]} (generator/read-module-config ctx modules module-key)
-          {:keys [feature-flag] :or {feature-flag :default} :as module-opts} (get opts module-key {})
-          deps (deps/resolve-dependencies module-config feature-flag)]
-      (log-install-dependency module-key feature-flag deps)
-      (doseq [module-key deps]
-        (install-dependency ctx module-key opts))
-      (generator/generate ctx module-key module-opts))
-    (log-missing-module module-key))
-  :done)
-
 (defn- flat-module-options
   "Converts options map passed to install-module into a flat map
    of module-key to module-specific options."
@@ -85,29 +47,6 @@
     (modules/list-modules ctx))
   :done)
 
-(defn dependency-tree
-  ([module-key]
-   (dependency-tree module-key {:feature-flag :default}))
-  ([module-key opts]
-   (dependency-tree module-key "kit.edn" opts))
-  ([module-key kit-edn-path opts]
-   (let [ctx (modules/load-modules (read-ctx kit-edn-path))]
-     (deps/dependency-tree ctx module-key (flat-module-options opts module-key)))))
-
-(defn print-dependencies
-  "Prints the dependency tree for a module in a simple format."
-  ([module-key]
-   (print-dependencies module-key {:feature-flag :default}))
-  ([module-key opts]
-   (print-dependencies module-key "kit.edn" opts))
-  ([module-key kit-edn-path opts]
-   (letfn [(print-tree [{:module/keys [key opts dependencies]} indent]
-             (println (str indent key " " opts))
-             (doseq [dep dependencies]
-               (print-tree dep (str indent "  "))))]
-     (print-tree (dependency-tree module-key kit-edn-path opts) ""))
-   :done))
-
 (defn install-module
   "Installs a kit module into the current project or the project specified by a
    path to kit.edn file.
@@ -118,8 +57,11 @@
   ([module-key opts]
    (install-module module-key "kit.edn" opts))
   ([module-key kit-edn-path opts]
-   (let [ctx (modules/load-modules (read-ctx kit-edn-path))]
-     (install-dependency ctx module-key (flat-module-options opts module-key)))))
+   (let [ctx (modules/load-modules (read-ctx kit-edn-path))
+         opts (flat-module-options opts module-key)]
+     (doseq [{:module/keys [key opts]} (deps/dependency-list ctx module-key opts)]
+       (generator/generate ctx key opts))
+     :done)))
 
 (defn list-installed-modules
   "Lists installed modules and modules that failed to install, for the current

@@ -139,7 +139,7 @@
                 (handle-action ctx action))
               (write-modules-log modules-root (assoc module-log module-key :success))
               (println (or success-message
-                           (str "Module " module-key " installed successfully!")))
+                           (str "module " module-key " installed successfully!")))
               (when require-restart?
                 (println "restart required!")))))
         (catch Exception e

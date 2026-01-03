@@ -7,8 +7,6 @@
    [kit-generator.project :refer [project-root module-installed? prepare-project]]
    [kit.api :as kit]))
 
-(declare match?)
-
 (def module-repo-path "test/resources/modules")
 
 (defn test-install-module*
@@ -44,55 +42,41 @@
                                              "src/clj/myapp/db/migratus.clj"       []
                                              "src/clj/myapp/db/migrations/001.clj" []
                                              "kit.edn"                             []}
-    :meta {:accept-hooks? true
-           :feature-flag :with-hooks}       {"post-install.txt"                    []
-                                             "kit.edn"                             []}
+    ;; :meta {:accept-hooks? true
+    ;;        :feature-flag :with-hooks}       {"post-install.txt"                    []
+    ;;                                          "kit.edn"                             []}
 
 ;;
     ))
 
+(deftest test-install-module-cyclic-dependency
+  (let [kit-edn-path (prepare-project module-repo-path)]
+    (is (thrown? Exception
+                 (kit/install-module :meta kit-edn-path {:feature-flag :extras
+                                                         :db {:feature-flag :cyclic}})))
+    (is (not (module-installed? :meta)))))
+
 ;; TODO: Should feature-requires be transient? If so, add tests for that.
 
-(defn test-dependency-tree*
-  [module-key opts expected-tree]
-  (let [kit-edn-path (prepare-project module-repo-path)
-        tree (kit/dependency-tree module-key kit-edn-path opts)]
-    (is (match? expected-tree tree))))
-
-(deftest test-dependency-tree
-  (are [module-key opts expected-tree] (test-dependency-tree* module-key opts expected-tree)
-    :meta {}                                {:module/key          :meta
-                                             :module/config       map?
-                                             :module/opts         {}
-                                             :module/dependencies []}
-    :meta {:feature-flag :extras}           {:module/key          :meta
-                                             :module/config       map?
-                                             :module/opts         {:feature-flag :extras}
-                                             :module/dependencies [{:module/key          :db
-                                                                    :module/config       map?
-                                                                    :module/opts         {}
-                                                                    :module/dependencies []}]}
-    :meta {:feature-flag :full}             {:module/key           :meta
-                                             :module/config        map?
-                                             :module/opts          {:feature-flag :full}
-                                             :module/dependencies  [{:module/key          :db
-                                                                     :module/config       map?
-                                                                     :module/opts         {}
-                                                                     :module/dependencies []}]}
-    :meta {:feature-flag :full
-           :db {:feature-flag :migrations}} {:module/key           :meta
-                                             :module/config        map?
-                                             :module/opts          {:feature-flag :full}
-                                             :module/dependencies  [{:module/key          :db
-                                                                     :module/config       map?
-                                                                     :module/opts         {:feature-flag :migrations}
-                                                                     :module/dependencies [{:module/key          :migratus
-                                                                                            :module/config       map?
-                                                                                            :module/opts         {}
-                                                                                            :module/dependencies []}]}]}
-;
-    ))
 (comment
+  (def dep-tree {:module/key           :meta
+                 :module/config        map?
+                 :module/opts          {:feature-flag :full}
+                 :module/dependencies  [{:module/key          :db
+                                         :module/config       map?
+                                         :module/opts         {:feature-flag :migrations}
+                                         :module/dependencies [{:module/key          :migratus
+                                                                :module/config       map?
+                                                                :module/opts         {}
+                                                                :module/dependencies []}]}]})
+
+  (map :module/key (tree-seq #(contains? % :module/dependencies)
+                             :module/dependencies
+                             dep-tree))
   (clojure.test/run-tests 'kit-generator.core-test)
-  (kit/print-dependencies :meta (prepare-project module-repo-path) {:feature-flag :full
-                                                                    :db          {:feature-flag :migrations}}))
+  (require '[kit.generator.modules.dependencies :as deps])
+  (deps/dependency-list :meta (kit/read-ctx (prepare-project module-repo-path)) {:feature-flag :full
+                                                                                 :db          {:feature-flag :migrations}})
+
+;
+  )

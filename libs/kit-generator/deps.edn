@@ -12,9 +12,7 @@
            clj-fuzzy/clj-fuzzy                   {:mvn/version "0.4.1"}
            clojure-deep-merge/clojure-deep-merge {:mvn/version "0.1.2"}}
  :aliases {:dev
-           {:extra-paths ["test"]
-            :extra-deps {nubank/matcher-combinators {:mvn/version "3.9.2"}}}
-
+           {:extra-paths ["test"]}
            :cider
            {:extra-deps {nrepl/nrepl       {:mvn/version "1.5.1"}
                          cider/cider-nrepl {:mvn/version "0.58.0"}}
