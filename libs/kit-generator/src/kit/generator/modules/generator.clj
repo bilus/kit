@@ -5,7 +5,8 @@
    [clojure.java.io :as jio]
    [kit.generator.io :as io]
    [kit.generator.modules.injections :as ij]
-   [kit.generator.renderer :as renderer])
+   [kit.generator.renderer :as renderer]
+   [kit.generator.reporter :as reporter])
   (:import
    java.nio.file.Files))
 
@@ -33,7 +34,10 @@
 (defn write-asset [asset path force?]
   (jio/make-parents path)
   (if (and (.exists (jio/file path)) (not force?))
-    (println "WARNING: Asset already exists:" path)
+    (reporter/report-warning (str "Asset already exists: " path)
+                             {:path path
+                              :asset asset
+                              :force? force?})
     ((if (string? asset) write-string write-binary) asset path)))
 
 ;; IMPORTANT: When adding new action types, be sure
@@ -51,13 +55,10 @@
 
 (defmethod handle-action :assets [ctx module-path [_ assets]]
   (doseq [asset assets]
-    (println "** processing asset:" asset)
     (cond
       ;; if asset is a string assume it's a directory to be created
       (string? asset)
-      (do
-        (println "** creating directory:" (render-target-path ctx asset))
-        (.mkdir (jio/file (render-target-path ctx asset))))
+      (.mkdir (jio/file (render-target-path ctx asset)))
       ;; otherwise asset should be a tuple of [source target] path strings
       (and (sequential? asset) (contains? #{2 3} (count asset)))
       (let [[asset-path target-path force?] asset
@@ -76,7 +77,9 @@
   (ij/inject-data ctx injections))
 
 (defmethod handle-action :default [_ _ [id]]
-  (println "ERROR: Undefined action:" id))
+  (throw (ex-info (str "Undefined action: " id)
+                  {:error ::undefined-action
+                   :id    id})))
 
 (defn generate [ctx {:module/keys [path resolved-config]}]
   (let [{:keys [actions]} resolved-config]

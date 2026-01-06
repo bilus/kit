@@ -5,7 +5,12 @@
    [clojure.java.io :as jio]
    [clojure.test :as t])
   (:import
-   java.io.File))
+   [java.io File]
+   [java.nio.file
+    CopyOption
+    Files
+    Path
+    StandardCopyOption]))
 
 (defn str->edn [config]
   (edn/read-string {:default tagged-literal} config))
@@ -13,14 +18,6 @@
 (defn edn->str [edn]
   (binding [*print-namespace-maps* false]
     (with-out-str (prn edn))))
-
-(defn update-edn-file [path f]
-  (spit
-   path
-   (-> (slurp path)
-       (str->edn)
-       (f)
-       (edn->str))))
 
 (defn concat-path
   "Joins `head` and one or more `parts` using path separators specific to the particular
@@ -45,28 +42,57 @@
 
 (defn relative-path
   "Returns path as relative to base-path"
+  {:test (fn []
+           (t/is (= "docs/file.txt"
+                    (relative-path "/home/user/docs/file.txt" "/home/user")))
+           (t/is (= "docs/file.txt"
+                    (relative-path "home/user/docs/file.txt" "home/user")))
+           (t/is (= "/FOO/file.txt"
+                    (relative-path "/FOO/file.txt" "/BAR")))
+           (t/is (= "file.txt"
+                    (relative-path "file.txt" "."))))}
   [path base-path]
-  (.toString (.relativize (.toURI (jio/file base-path))
-                          (.toURI (jio/file path)))))
+  (.getPath (.relativize (.toURI (jio/file base-path))
+                         (.toURI (jio/file path)))))
+(defn- copy-file
+  "Copy file from `src` to `target`."
+  [src-file tgt-file]
+  (with-open [in (jio/input-stream src-file)
+              out (jio/output-stream tgt-file)]
+    (jio/copy in out)))
 
 (defn clone-file
   "Copy file from `src` to `target`, creating parent directories as needed."
   [src tgt]
   (jio/make-parents tgt)
-  (let [source-file (jio/file src)
-        target-file (jio/file tgt)]
-    (jio/copy source-file target-file)))
+  (let [src-file (jio/file src)
+        tgt-file (jio/file tgt)]
+    ;; Using Files/copy with COPY_ATTRIBUTES triggers DirectoryWatcher who
+    ;; thinks the source file was created.
+    (copy-file src-file tgt-file)
+    (.setLastModified tgt-file (.lastModified src-file))))
 
 (defn clone-folder
-  "Erase `target` then copy all files from `src` to `target` recursively."
-  [src target & {:keys [filter] :or {filter (constantly true)}}]
-  (delete-folder target)
-  (let [files (file-seq (clojure.java.io/file src))]
-    (doseq [f files]
-      (let [target-file (clojure.java.io/file target
-                                              (relative-path f src))]
-        (when (and (.isFile f) (filter (.getPath f)))
-          (clone-file f target-file))))))
+  "Erase `target` then copy all files from `src` to `target` recursively,
+   preserving last modified timestamps.
+
+   Options:
+     :filter - predicate called with file path string, return true to include the file"
+  [src-folder target-folder & {:keys [filter] :or {filter (constantly true)}}]
+  (delete-folder target-folder)
+  ;; TODO: It can be optimized by walking the file tree and skipping directories
+  ;; that don't match the filter.
+  (let [files (file-seq (clojure.java.io/file src-folder))]
+    (doseq [src files]
+      (let [tgt (clojure.java.io/file target-folder (relative-path src src-folder))]
+        (when (filter (.getPath src))
+          (if (.isDirectory src)
+            (when-not (.exists tgt)
+              (.mkdir tgt))
+            ;; Using Files/copy with COPY_ATTRIBUTES triggers DirectoryWatcher who
+            ;; thinks the source file was created.
+            (copy-file src tgt))
+          (.setLastModified tgt (.lastModified src)))))))
 
 (defn exists?
   [path]
@@ -95,5 +121,30 @@
   (or (.getParent (jio/file path))
       "."))
 
+;; TODO: Functions like this should probably use canonicalized paths to avoid issues with relative paths.
+(defn parent? [base-dir path]
+  (= base-dir (parent-name path)))
+
+(defn last-modified
+  "Returns the last modification timestamp of the file at `path` in milliseconds."
+  [path]
+  (.lastModified (jio/file path)))
+
+(defn newer?
+  "Returns true if the file at `path1` was modified more recently than the file at `path2`."
+  [path1 path2]
+  (> (last-modified path1) (last-modified path2)))
+
+(defn binary-file? [path]
+  (let [mime (Files/probeContentType (.toPath (jio/file path)))]
+    (and mime (not (.startsWith mime "text/")))))
+
 (comment
+  (binary-file? "/tmp/preview/resources/public/img/kit.png")
+  (binary-file? "/tmp/preview/README.md")
+  (binary-file? "/tmp/preview/package.json")
+  (doseq [f  (take 10 (file-seq (jio/file "/tmp/preview")))]
+    (println (str f)))
+  (clone-folder "../../../kit-pocketbase-example/" "/tmp/preview2")
+  (.isDirectory (jio/file "../../../kit-pocketbase-example"))
   (t/run-tests 'kit.generator.io))

@@ -3,7 +3,6 @@
   (:require
    [clojure.string :as str]
    [clojure.test :as t]
-   [kit.generator.gitignore :as gitignore]
    [kit.generator.hooks :as hooks]
    [kit.generator.io :as io]
    [kit.generator.modules :as modules]
@@ -11,7 +10,8 @@
                                       track-installation]]
    [kit.generator.modules.dependencies :as deps]
    [kit.generator.modules.generator :as generator]
-   [kit.generator.snippets :as snippets]))
+   [kit.generator.snippets :as snippets]
+   [kit.generator.reporter :as reporter]))
 
 (defn read-ctx
   ([]
@@ -59,7 +59,10 @@
 
 (defn- report-install-module-error
   [module-key e]
-  (println "ERROR: Failed to install module" module-key)
+  (reporter/report-error
+   (str "Failed to install module " module-key)
+   {:module-key module-key
+    :exception  e})
   (.printStackTrace e))
 
 (defn- report-install-module-success
@@ -72,7 +75,9 @@
 (defn- report-already-installed
   [installed-modules]
   (doseq [{:module/keys [key]} installed-modules]
-    (println "WARNING: Module" key "was already installed successfully. Skipping installation.")))
+    (reporter/report-warning
+     (str "Module " key " was already installed successfully. Skipping installation.")
+     {:module-key key})))
 
 (defn installation-plan
   "Loads and resolves modules in preparation for installation, as
@@ -150,10 +155,20 @@
   "Prompts the user to accept running hooks defined in a module.
    See prompt-y-n-all for details."
   [accept-hooks-atom hooks]
-  (println "The following hook actions will be performed:")
-  (doseq [hook hooks]
-    (println "  $" hook))
-  (prompt-y-n-all "Run the hook?" accept-hooks-atom))
+  (if @accept-hooks-atom
+    true
+    (do (println "The following hook actions will be performed:")
+        (doseq [hook hooks]
+          (println "  $" hook))
+        (prompt-y-n-all "Run the hook?" accept-hooks-atom))))
+
+(defn make-reporter
+  []
+  (reify reporter/Reporter
+    (reporter/warning [_ msg _data]
+      (println "WARNING:" msg))
+    (reporter/error [_ msg _data]
+      (println "ERROR:" msg))))
 
 (defn install-module
   "Installs a kit module into the current project or the project specified by a
@@ -161,30 +176,32 @@
 
    Global options:
    - :accept-hooks? - accept all hooks without prompting.
-   - :dry?          - only print the installation plan "
+   - :dry?          - only print the installation plan
+   - :reporter      - custom reporter implementing Reporter protocol"
   ([module-key]
    (install-module module-key {:feature-flag :default}))
   ([module-key opts]
    (install-module module-key "kit.edn" opts))
-  ([module-key kit-edn-path {:keys [accept-hooks? dry?] :as opts}]
+  ([module-key kit-edn-path {:keys [accept-hooks? dry? reporter] :as opts}]
    ;; NOTE: When adding new module-specific options, update `flat-module-options`.
    ;; See the function for more details.
-   (if dry?
-     (print-installation-plan module-key kit-edn-path opts)
-     (let [{:keys [ctx pending-modules installed-modules]} (installation-plan module-key kit-edn-path opts)
-           accept-hooks-atom                               (atom accept-hooks?)
-           {:keys [project-root]}                          ctx]
-       (report-already-installed installed-modules)
-       (doseq [{:module/keys [key resolved-config] :as module} pending-modules]
-         (try
-           (track-installation ctx key
-                               (generator/generate ctx module)
-                               (hooks/run-hooks :post-install resolved-config
-                                                {:confirm (partial prompt-run-hooks accept-hooks-atom)
-                                                 :dir     project-root})
-                               (report-install-module-success key resolved-config))
-           (catch Exception e
-             (report-install-module-error key e))))))
+   (reporter/with-reporter (or reporter (make-reporter))
+     (if dry?
+       (print-installation-plan module-key kit-edn-path opts)
+       (let [{:keys [ctx pending-modules installed-modules]} (installation-plan module-key kit-edn-path opts)
+             accept-hooks-atom                               (atom accept-hooks?)
+             {:keys [project-root]}                          ctx]
+         (report-already-installed installed-modules)
+         (doseq [{:module/keys [key resolved-config] :as module} pending-modules]
+           (try
+             (track-installation ctx key
+                                 (generator/generate ctx module)
+                                 (hooks/run-hooks :post-install resolved-config
+                                                  {:confirm (partial prompt-run-hooks accept-hooks-atom)
+                                                   :dir     project-root})
+                                 (report-install-module-success key resolved-config))
+             (catch Exception e
+               (report-install-module-error key e)))))))
    :done))
 
 (defn list-installed-modules

@@ -1,5 +1,6 @@
 {:paths   ["src"]
  :deps    {org.clojure/clojure                   {:mvn/version "1.12.3"}
+           org.clojure/core.async                {:mvn/version "1.8.741"}
            hato/hato                             {:mvn/version "1.0.0"}
            selmer/selmer                         {:mvn/version "1.12.67"}
            clj-jgit/clj-jgit                     {:mvn/version "1.1.0"}
@@ -12,10 +13,14 @@
            clj-fuzzy/clj-fuzzy                   {:mvn/version "0.4.1"}
            clojure-deep-merge/clojure-deep-merge {:mvn/version "0.1.2"}
            babashka/process                      {:mvn/version "0.6.23"}
-           com.stuartsierra/dependency           {:mvn/version "1.0.0"}}
+           com.stuartsierra/dependency           {:mvn/version "1.0.0"}
+           autochrome/autochrome                 {:mvn/version "0.1.0-SNAPSHOT"}
+           javax.xml.bind/jaxb-api               {:mvn/version "2.3.1"}
+           io.methvin/directory-watcher          {:mvn/version "0.17.3"}}
  :aliases {:dev
-           {:extra-paths ["test"]
-            :extra-deps  {nubank/matcher-combinators {:mvn/version "3.9.2"}}}
+           {:extra-paths ["test" "env/dev/clj"]
+            :extra-deps  {nubank/matcher-combinators {:mvn/version "3.9.2"}}
+            :jvm-opts    ["-Djdk.attach.allowAttachSelf"]}
            :cider
            {:extra-deps {nrepl/nrepl       {:mvn/version "1.5.1"}
                          cider/cider-nrepl {:mvn/version "0.58.0"}}
