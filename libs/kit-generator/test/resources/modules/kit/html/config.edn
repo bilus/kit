@@ -1,11 +1,12 @@
 {:default
  {:require-restart? true
   :success-message  "HTML module installed successfully!"
-  :actions          {:assets [["assets/home.html" "test/resources/generated/resources/public/home.html"]
-                              ["assets/img/luminus.png" "test/resources/generated/resources/public/img/luminus.png"]
-                              ["assets/pages.clj" "test/resources/generated/src/clj/<<ns-name>>/web/routes/pages.clj"]]
+  :actions          {:assets [["assets/home.html" "resources/public/home.html"]
+                              ["assets/img/luminus.png" "resources/public/img/luminus.png"]
+                              ["assets/pages.clj" "src/clj/<<ns-name>>/web/routes/pages.clj"]
+                              "resources/public/files"]
                      :injections [{:type   :edn
-                                   :path   "test/resources/generated/resources/system.edn"
+                                   :path   "resources/system.edn"
                                    :target []
                                    :action :merge
                                    :value  {:reitit.routes/pages
@@ -14,7 +15,7 @@
                                             :templating/selmer
                                             {}}}
                                   {:type   :clj
-                                   :path   "test/resources/generated/src/<<sanitized>>/core.clj"
+                                   :path   "src/<<sanitized>>/core.clj"
                                    :action :append-requires
                                    :value  ["[<<ns-name>>.web.routes.pages]"]}]}}
  :empty {:success-message "Empty module installed successfully!"

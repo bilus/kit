@@ -353,7 +353,7 @@
             (read-file path)
             (assoc path->data path))
        (catch Exception e
-         (throw (ex-info (str "Failed to read asset:" path)
+         (throw (ex-info (str "Failed to read asset: " path)
                          {:error ::read-asset
                           :path :path}
                          e)))))
@@ -374,11 +374,39 @@
    {}
    xs))
 
+(defn prepare-injection-paths
+  "Injections with rendered injection paths adjusted for output directory, if specified
+   in the context.
+
+   If output directory is present and different that project-root, it copies
+   each file injections will operate on to output dir and prepends the output-dir
+   to the injection path. As a result, injections will be applied to files in the
+   output-dir, not in the project dir.
+
+   If output directory is not present, :project-root is prepended to each
+   injection path instead."
+  [{:keys [output-dir project-root] :as ctx} injections]
+  ;; TODO: The logic of selecting the target dir is duplicated in generator.clj and hooks.clj
+  (let [target-dir (or output-dir project-root)]
+    (when (and output-dir (not (io/same-path? output-dir project-root)))
+      (doseq [path (->> injections
+                        (map :path)
+                        (distinct))]
+        (let [source-path (io/concat-path project-root path)
+              target-path (io/concat-path output-dir path)]
+          (io/clone-file source-path target-path))))
+
+    (->> injections
+         (map (fn [injection] (update injection :path #(io/concat-path target-dir
+                                                                       (renderer/render-template ctx %))))))))
+
 (defn inject-data [ctx injections]
+  (println "** injections before" injections)
   (let [injections (->> injections
-                        (map (fn [injection] (update injection :path #(renderer/render-template ctx %))))
+                        (prepare-injection-paths ctx)
                         (group-by-path))
         path->data (read-files ctx (keys injections))]
+    (println "** injections" injections)
     (doseq [[path injections] injections]
       (println "updating file:" path)
       (->> (inject-at-path ctx (path->data path) path injections)

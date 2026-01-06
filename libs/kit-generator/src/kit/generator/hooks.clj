@@ -6,12 +6,14 @@
 (defmulti run-hooks (fn [hook _ _] hook))
 
 (defmethod run-hooks :post-install
-  [hook module-config {:keys [confirm] :or {confirm (fn [] true)}}]
+  [hook module-config {:keys [confirm dir] :or {confirm (fn [_] true)}}]
+  (println "** dir" dir)
   (when-let [actions (seq (get-in module-config [:hooks hook]))]
     (if (confirm actions)
       (doseq [action actions]
         (println "$" action)
         (let [{:keys [exit out]} (sh {:continue true
+                                      :dir      dir
                                       :out      :string
                                       :err      :out} "sh" "-c" action)]
           (println out)
@@ -20,6 +22,7 @@
                             {:error  ::hook-failed
                              :action action
                              :exit   exit
+                             :dir    dir
                              :out    out})))))
       (println "Skipping hooks for" hook))))
 

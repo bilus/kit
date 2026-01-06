@@ -1,14 +1,22 @@
 {:default
- {:actions {:assets [["assets/app.css" "test/resources/generated/resources/public/css/app.css"]]}}
+ {:actions {:assets [["assets/app.css" "resources/public/css/app.css"]]}}
 
  :extras
- {:actions {:assets [["assets/styles.css" "test/resources/generated/resources/public/css/styles.css"]]}
+ {:actions {:assets [["assets/styles.css" "resources/public/css/styles.css"]]}
   :requires [:db]}
 
  :full
  {:feature-requires [:default :extras]}
 
  :with-hooks
- ;; Demonstrates that dependency hooks are run first.
- {:hooks {:post-install ["mv test/resources/generated/install.sh test/resources/generated/post-install.txt"]}
-  :requires [:hooks]}}
+;; Demonstrates that dependency hooks are run first.
+ {:hooks {:post-install ["mv install.sh post-install.txt"]}
+  :requires [:hooks]}
+
+ :with-adv-hooks
+;; Demonstrates that hooks run in project dir so you can use relative
+;; paths and that they have access to project files, even outside or
+;; project-root (when :output-dir opt is used).
+ {:hooks {:post-install
+          ["cp resources/public/css/app.css resources/public/css/app.css.bak"]}
+  :feature-requires [:default]}}

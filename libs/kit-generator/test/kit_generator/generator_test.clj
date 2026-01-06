@@ -3,7 +3,7 @@
    [clojure.java.io :as jio]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [kit-generator.io :refer [clone-file delete-folder folder-mismatches
-                             read-edn-safe]]
+                             read-edn-safe with-temp-dir]]
    [kit.api :as kit]
    [kit.generator.io :as io]
    [kit.generator.modules.generator :as g]))
@@ -78,3 +78,43 @@
     (let [expected-files {"resources/public/css/styles.css" [#".body"]
                           "resources/public/css/app.css"    [#".app"]}]
       (is (empty? (target-folder-mismatches expected-files))))))
+
+(deftest test-asset-generation
+  (testing "string asset generation"
+    (generate :html {:html {:feature-flag :default}})
+    (let [text-file (jio/file target-folder "resources/public/home.html")]
+      (is (.exists text-file))
+      (is (string? (slurp text-file)))))
+
+  (testing "binary asset generation"
+    (generate :html {:html {:feature-flag :default}})
+    (let [binary-file (jio/file target-folder "resources/public/img/luminus.png")]
+      (is (.exists binary-file))
+      (is (pos? (.length binary-file))))))
+
+(deftest test-asset-generation-with-output-dir
+  (with-temp-dir [output-dir "kit-gen-test"]
+    (generate :html {:html {:feature-flag :default}
+                     :output-dir output-dir})
+    (let [text-file (jio/file output-dir "resources/public/home.html")
+          binary-file (jio/file output-dir "resources/public/img/luminus.png")]
+      (is (.exists text-file))
+      (is (string? (slurp text-file)))
+      (is (.exists binary-file))
+      (is (pos? (.length binary-file))))))
+
+(deftest test-directory-creation
+  (testing "directory is created in target folder"
+    (generate :html {:html {:feature-flag :default}})
+    (let [dir (jio/file target-folder "resources/public/files")]
+      (is (.exists dir))
+      (is (.isDirectory dir)))))
+
+(deftest test-directory-creation-with-output-dir
+  (testing "directory is created in output directory"
+    (with-temp-dir [output-dir "kit-gen-test"]
+      (generate :html {:html {:feature-flag :default}
+                       :output-dir output-dir})
+      (let [dir (jio/file output-dir "resources/public/files")]
+        (is (.exists dir))
+        (is (.isDirectory dir))))))

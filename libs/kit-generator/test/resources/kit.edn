@@ -1,7 +1,6 @@
 {:ns-name      "myapp"
  :sanitized    "myapp"
  :name         "myapp"
- :project-root "test/resources/generated"
  :modules      {:root         "test/resources/modules"
                 :repositories [{:url  "git@github.com:kit-clj/modules.git"
                                 :tag  "master"

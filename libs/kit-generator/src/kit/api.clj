@@ -3,11 +3,12 @@
   (:require
    [clojure.string :as str]
    [clojure.test :as t]
+   [kit.generator.gitignore :as gitignore]
    [kit.generator.hooks :as hooks]
    [kit.generator.io :as io]
    [kit.generator.modules :as modules]
-   [kit.generator.modules-log :refer [track-installation installed-modules
-                                      module-installed?]]
+   [kit.generator.modules-log :refer [installed-modules module-installed?
+                                      track-installation]]
    [kit.generator.modules.dependencies :as deps]
    [kit.generator.modules.generator :as generator]
    [kit.generator.snippets :as snippets]))
@@ -19,7 +20,8 @@
    (assert (not (str/blank? path)))
    (-> path
        (slurp)
-       (io/str->edn))))
+       (io/str->edn)
+       (merge {:project-root (io/parent-name path)}))))
 
 (defn- flat-module-options
   "Converts options map passed to install-module into a flat map of module-key to
@@ -75,10 +77,15 @@
 (defn installation-plan
   "Loads and resolves modules in preparation for installation, as
    well as determining which modules are already installed vs which
-   need to be installed."
-  [module-key kit-edn-path opts]
+   need to be installed.
+
+   If `:output-dir` is specified, the source files are never modified. Instead,
+   the generated assets, as well as injection results are written relative to the
+   output directory."
+  [module-key kit-edn-path {:keys [output-dir] :as opts}]
   (let [opts (flat-module-options opts module-key)
-        ctx (modules/load-modules (read-ctx kit-edn-path) opts)
+        ctx (merge (modules/load-modules (read-ctx kit-edn-path) opts)
+                   {:output-dir output-dir})
         {installed true pending false} (->> (deps/dependency-list ctx module-key opts)
                                             (group-by #(module-installed? ctx (:module/key %))))]
     {:ctx ctx
@@ -153,28 +160,45 @@
     (println "  $" hook))
   (prompt-y-n-all "Run the hook?" accept-hooks-atom))
 
+(defn- copy-project-files
+  "Copies all project files to target directory, excluding files ignored by .gitignore."
+  [project-root target-dir]
+  (let [gitignore (gitignore/load-gitignore ".gitignore" {:safe? true})]
+    (io/clone-folder project-root target-dir
+                     {:filter (fn [path] (not (gitignore/ignored? gitignore path)))})))
+
 (defn install-module
   "Installs a kit module into the current project or the project specified by a
    path to kit.edn file.
 
-   > NOTE: When adding new module-specific options, update flat-module-options.
-     See the function for more details."
+   Global options:
+   - :accept-hooks? - accept all hooks without prompting.
+   - :dry?          - only print the installation plan
+   - :output-dir    - output directory for generated files, if different from project root"
   ([module-key]
    (install-module module-key {:feature-flag :default}))
   ([module-key opts]
    (install-module module-key "kit.edn" opts))
   ([module-key kit-edn-path {:keys [accept-hooks? dry?] :as opts}]
+   ;; NOTE: When adding new module-specific options, update `flat-module-options`.
+   ;; See the function for more details.
    (if dry?
      (print-installation-plan module-key kit-edn-path opts)
      (let [{:keys [ctx pending-modules installed-modules]} (installation-plan module-key kit-edn-path opts)
-           accept-hooks-atom (atom accept-hooks?)]
+           accept-hooks-atom (atom accept-hooks?)
+           {:keys [output-dir project-root]} ctx
+           target-dir (or output-dir project-root)]
        (report-already-installed installed-modules)
+       (when-not  (io/same-path? target-dir project-root)
+         (println "copying project files to output directory:" target-dir)
+         (copy-project-files project-root target-dir))
        (doseq [{:module/keys [key resolved-config] :as module} pending-modules]
          (try
            (track-installation ctx key
                                (generator/generate ctx module)
                                (hooks/run-hooks :post-install resolved-config
-                                                {:confirm (partial prompt-run-hooks accept-hooks-atom)})
+                                                {:confirm (partial prompt-run-hooks accept-hooks-atom)
+                                                 :dir     target-dir})
                                (report-install-module-success key resolved-config))
            (catch Exception e
              (report-install-module-error key e))))))

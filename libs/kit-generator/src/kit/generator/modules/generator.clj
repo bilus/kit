@@ -44,23 +44,34 @@
 (comment
   (ns-unmap 'kit.generator.modules.generator 'handle-action))
 
+(defn render-target-path
+  [{:keys [output-dir project-root] :as ctx} target-path]
+  (let [rendered-path (renderer/render-template ctx target-path)
+        target-dir (or  output-dir project-root)]
+    (io/concat-path target-dir rendered-path)))
+
 (defmethod handle-action :assets [ctx module-path [_ assets]]
   (doseq [asset assets]
+    (println "** processing asset:" asset)
     (cond
       ;; if asset is a string assume it's a directory to be created
       (string? asset)
-      (.mkdir (jio/file (renderer/render-template ctx asset)))
+      (do
+        (println "** creating directory:" (render-target-path ctx asset))
+        (.mkdir (jio/file (render-target-path ctx asset))))
       ;; otherwise asset should be a tuple of [source target] path strings
       (and (sequential? asset) (contains? #{2 3} (count asset)))
-      (let [[asset-path target-path force?] asset]
-        (println "rendering asset to:" target-path)
+      (let [[asset-path target-path force?] asset
+            target-full-path (render-target-path ctx target-path)]
+        (println "rendering asset:" asset-path  "to:" target-full-path)
         (write-asset
          (->> (read-asset (io/concat-path module-path asset-path))
               (renderer/render-asset ctx))
-         (renderer/render-template ctx target-path)
+         target-full-path
          force?))
       :else
-      (println "ERROR: Unrecognized asset type:" asset))))
+      (throw (ex-info (str "unrecognized asset type: " asset) {:error ::undefined-asset
+                                                               :asset asset})))))
 
 (defmethod handle-action :injections [ctx _ [_ injections]]
   (ij/inject-data ctx injections))
@@ -73,8 +84,17 @@
     (doseq [action actions]
       (handle-action ctx path action))))
 
-(defn describe-asset-action [[_ target]]
-  (str "create " target))
+(defn describe-asset-action [asset]
+  ;; Must match handle-action
+  (cond
+    (string? asset)
+    (str "create " asset)
+    (and (sequential? asset) (contains? #{2 3} (count asset)))
+    (let [[_ target-path] asset]
+      (str "create " target-path))
+    :else
+    (throw (ex-info (str "unrecognized asset type: " asset) {:error ::undefined-asset
+                                                             :asset asset}))))
 
 (defn describe-injection-action [injection]
   (ij/describe-injection injection))

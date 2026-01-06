@@ -4,16 +4,10 @@
    [clojure.java.io :as jio]
    [kit.generator.io :as io]
    [clojure.set :as set]
-   [clojure.test :as t]))
-
-(defn delete-folder [file-name]
-  (letfn [(func [f]
-            (when (.exists f)
-              (when (.isDirectory f)
-                (doseq [f2 (.listFiles f)]
-                  (func f2)))
-              (jio/delete-file f)))]
-    (func (jio/file file-name))))
+   [clojure.test :as t])
+  (:import
+   [java.nio.file Files]
+   [java.nio.file.attribute FileAttribute]))
 
 (defn ls-R
   "Walks dir recursively and returns a map of relative file paths to their contents."
@@ -27,30 +21,10 @@
                      (assoc acc rel-path (slurp f))))
                  {}))))
 
-(defn relative-path
-  "Returns path as relative to base-path"
-  [path base-path]
-  (.toString (.relativize (.toURI (jio/file base-path))
-                          (.toURI (jio/file path)))))
-
-(defn clone-file
-  "Copy file from `src` to `target`, creating parent directories as needed."
-  [src tgt]
-  (jio/make-parents tgt)
-  (let [source-file (jio/file src)
-        target-file (jio/file tgt)]
-    (clojure.java.io/copy source-file target-file)))
-
-(defn clone-folder
-  "Erase `target` then copy all files from `src` to `target` recursively."
-  [src target & {:keys [filter] :or {filter (constantly true)}}]
-  (delete-folder target)
-  (let [files (file-seq (clojure.java.io/file src))]
-    (doseq [f files]
-      (let [target-file (clojure.java.io/file target
-                                              (relative-path f src))]
-        (when (and (.isFile f) (filter (.getPath f)))
-          (clone-file f target-file))))))
+(def delete-folder io/delete-folder)
+(def relative-path io/relative-path)
+(def clone-file io/clone-file)
+(def clone-folder io/clone-folder)
 
 (defn- file-mismatches
   "Checks content against expectation. Returns set of errors or nil if matches."
@@ -135,6 +109,17 @@
 (defn read-edn-safe [path]
   (when-let [content (read-safe path)]
     (edn/read-string content)))
+
+(defmacro with-temp-dir
+  "Creates a temporary directory, binds it to `binding`, executes `body`,
+   and deletes the directory afterwards."
+  [[binding prefix] & body]
+  `(let [temp-dir# (Files/createTempDirectory ~prefix (into-array FileAttribute []))
+         ~binding (str temp-dir#)]
+     (try
+       ~@body
+       (finally
+         (delete-folder ~binding)))))
 
 (comment
   (t/run-all-tests)
