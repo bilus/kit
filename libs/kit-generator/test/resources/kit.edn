@@ -1,11 +1,11 @@
 {:ns-name      "myapp"
  :sanitized    "myapp"
  :name         "myapp"
- :modules      {:root         "test/resources/modules"
+ :modules      {:root         "modules"
                 :repositories [{:url  "git@github.com:kit-clj/modules.git"
                                 :tag  "master"
                                 :name "kit"}]}
- :snippets     {:root         "test/resources/snippets"
+ :snippets     {:root         "snippets"
                 :repositories [{:url  "git@github.com:kit-clj/snippets.git"
                                 :tag  "master"
                                 :name "kit"}]}}

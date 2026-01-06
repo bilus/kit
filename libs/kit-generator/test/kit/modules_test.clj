@@ -5,7 +5,7 @@
              [kit-generator.project :as project]))
 
 (deftest load-modules
-  (let [kit-edn-path (project/prepare-project "test/resources/modules")
+  (let [kit-edn-path (project/prepare-project)
         ctx          (modules/load-modules (project/read-ctx kit-edn-path))]
 
     (is (= 6 (count (modules/modules ctx))))
@@ -17,7 +17,7 @@
                   html-module)))))
 
 (deftest load-modules-resolve
-  (let [kit-edn-path (project/prepare-project "test/resources/modules")
+  (let [kit-edn-path (project/prepare-project)
         ctx          (modules/load-modules (project/read-ctx kit-edn-path)
                                            {:meta {:feature-flag :extras}})]
 

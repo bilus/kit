@@ -7,8 +7,9 @@
    [kit.generator.io :as io]
    [kit.generator.renderer :as renderer]))
 
-(defn root [ctx]
-  (get-in ctx [:modules :root]))
+(defn root [{:keys [project-root modules]}]
+  (println "** project-root:" project-root)
+  (io/concat-path project-root (get modules :root "modules")))
 
 (defn sync-modules!
   "Clones or pulls modules from git repositories.
@@ -29,10 +30,10 @@
 (defn- set-module-path [module-config base-path]
   (update module-config :path #(io/concat-path base-path %)))
 
-(defn- set-module-paths [root {:keys [module-root modules]}]
+(defn- set-module-paths [base-dir {:keys [module-root modules]}]
   (reduce
    (fn [modules [id config]]
-     (assoc modules id (set-module-path config (io/concat-path root module-root))))
+     (assoc modules id (set-module-path config (io/concat-path base-dir module-root))))
    {}
    modules))
 

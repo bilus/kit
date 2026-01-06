@@ -77,21 +77,16 @@
 (defn installation-plan
   "Loads and resolves modules in preparation for installation, as
    well as determining which modules are already installed vs which
-   need to be installed.
-
-   If `:output-dir` is specified, the source files are never modified. Instead,
-   the generated assets, as well as injection results are written relative to the
-   output directory."
-  [module-key kit-edn-path {:keys [output-dir] :as opts}]
+   need to be installed."
+  [module-key kit-edn-path opts]
   (let [opts (flat-module-options opts module-key)
-        ctx (merge (modules/load-modules (read-ctx kit-edn-path) opts)
-                   {:output-dir output-dir})
+        ctx  (modules/load-modules (read-ctx kit-edn-path) opts)
         {installed true pending false} (->> (deps/dependency-list ctx module-key opts)
                                             (group-by #(module-installed? ctx (:module/key %))))]
-    {:ctx ctx
+    {:ctx               ctx
      :installed-modules installed
-     :pending-modules pending
-     :opts opts}))
+     :pending-modules   pending
+     :opts              opts}))
 
 (defn print-installation-plan
   "Prints a detailed installation plan for a module and its dependencies."
@@ -123,7 +118,7 @@
            (println))))
 
      (println "SUMMARY")
-     (let [pending-count (count pending-modules)
+     (let [pending-count   (count pending-modules)
            installed-count (count installed-modules)]
        (when (pos? installed-count)
          (println " " installed-count "module(s) already installed (skipped)"))
@@ -160,21 +155,13 @@
     (println "  $" hook))
   (prompt-y-n-all "Run the hook?" accept-hooks-atom))
 
-(defn- copy-project-files
-  "Copies all project files to target directory, excluding files ignored by .gitignore."
-  [project-root target-dir]
-  (let [gitignore (gitignore/load-gitignore ".gitignore" {:safe? true})]
-    (io/clone-folder project-root target-dir
-                     {:filter (fn [path] (not (gitignore/ignored? gitignore path)))})))
-
 (defn install-module
   "Installs a kit module into the current project or the project specified by a
    path to kit.edn file.
 
    Global options:
    - :accept-hooks? - accept all hooks without prompting.
-   - :dry?          - only print the installation plan
-   - :output-dir    - output directory for generated files, if different from project root"
+   - :dry?          - only print the installation plan "
   ([module-key]
    (install-module module-key {:feature-flag :default}))
   ([module-key opts]
@@ -185,20 +172,16 @@
    (if dry?
      (print-installation-plan module-key kit-edn-path opts)
      (let [{:keys [ctx pending-modules installed-modules]} (installation-plan module-key kit-edn-path opts)
-           accept-hooks-atom (atom accept-hooks?)
-           {:keys [output-dir project-root]} ctx
-           target-dir (or output-dir project-root)]
+           accept-hooks-atom                               (atom accept-hooks?)
+           {:keys [project-root]}                          ctx]
        (report-already-installed installed-modules)
-       (when-not  (io/same-path? target-dir project-root)
-         (println "copying project files to output directory:" target-dir)
-         (copy-project-files project-root target-dir))
        (doseq [{:module/keys [key resolved-config] :as module} pending-modules]
          (try
            (track-installation ctx key
                                (generator/generate ctx module)
                                (hooks/run-hooks :post-install resolved-config
                                                 {:confirm (partial prompt-run-hooks accept-hooks-atom)
-                                                 :dir     target-dir})
+                                                 :dir     project-root})
                                (report-install-module-success key resolved-config))
            (catch Exception e
              (report-install-module-error key e))))))
@@ -219,7 +202,7 @@
   (let [db (atom nil)]
     (fn [ctx & [reload?]]
       (if (or (empty? @db) reload?)
-        (reset! db (-> ctx :snippets :root (snippets/load-snippets)))
+        (reset! db (-> ctx (snippets/root) (snippets/load-snippets)))
         @db))))
 
 (defn sync-snippets []

@@ -45,10 +45,9 @@
   (ns-unmap 'kit.generator.modules.generator 'handle-action))
 
 (defn render-target-path
-  [{:keys [output-dir project-root] :as ctx} target-path]
-  (let [rendered-path (renderer/render-template ctx target-path)
-        target-dir (or  output-dir project-root)]
-    (io/concat-path target-dir rendered-path)))
+  [{:keys [project-root] :as ctx} target-path]
+  (let [rendered-path (renderer/render-template ctx target-path)]
+    (io/concat-path project-root rendered-path)))
 
 (defmethod handle-action :assets [ctx module-path [_ assets]]
   (doseq [asset assets]

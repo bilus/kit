@@ -1,16 +1,18 @@
 (ns kit-generator.generator-test
   (:require
    [clojure.java.io :as jio]
+   [clojure.string :as str]
    [clojure.test :refer [deftest is testing use-fixtures]]
    [kit-generator.io :refer [clone-file delete-folder folder-mismatches
-                             read-edn-safe with-temp-dir]]
+                             read-edn-safe]]
+   [kit-generator.project :as project]
    [kit.api :as kit]
    [kit.generator.io :as io]
    [kit.generator.modules.generator :as g]))
 
 (def source-folder "test/resources")
 (def target-folder "test/resources/generated")
-(def kit-edn-path "test/resources/kit.edn")
+(def kit-edn-path "test/resources/generated/kit.edn")
 
 (defn module-installed? [module-key]
   (when-let [install-log (read-edn-safe (str source-folder "/modules/install-log.edn"))]
@@ -30,7 +32,10 @@
                            (map second)
                            (map (fn [path] [path []]))
                            (into {}))]
-    (folder-mismatches target-folder (merge ignored-files expected-files))))
+    (folder-mismatches target-folder (merge ignored-files expected-files)
+                       {:filter #(and
+                                  (not (= % "kit.edn"))
+                                  (not (str/starts-with? % "modules/")))})))
 
 (use-fixtures :each
   (fn [f]
@@ -38,6 +43,7 @@
       (when (.exists install-log)
         (.delete install-log))
       (delete-folder target-folder)
+      (project/prepare-project {:project-root target-folder})
       (doseq [[source target] seeded-files]
         (clone-file (io/concat-path source-folder source) (io/concat-path target-folder target)))
       (f))))
@@ -45,6 +51,8 @@
 (defn prepare-install
   "Generates an installation plan and returns the context and module info for the specified module."
   [module-key opts]
+  ;; TODO: This test set up is messier than other tests that rely on prepare-project. Refactor this.
+  ;; The only difference is that it uses seed files to set the initial state of the project.
   (let [{:keys [ctx pending-modules]} (kit/installation-plan module-key kit-edn-path opts)
         module (first (filter #(= (:module/key %) module-key) pending-modules))]
     {:ctx    ctx
@@ -92,29 +100,9 @@
       (is (.exists binary-file))
       (is (pos? (.length binary-file))))))
 
-(deftest test-asset-generation-with-output-dir
-  (with-temp-dir [output-dir "kit-gen-test"]
-    (generate :html {:html {:feature-flag :default}
-                     :output-dir output-dir})
-    (let [text-file (jio/file output-dir "resources/public/home.html")
-          binary-file (jio/file output-dir "resources/public/img/luminus.png")]
-      (is (.exists text-file))
-      (is (string? (slurp text-file)))
-      (is (.exists binary-file))
-      (is (pos? (.length binary-file))))))
-
 (deftest test-directory-creation
   (testing "directory is created in target folder"
     (generate :html {:html {:feature-flag :default}})
     (let [dir (jio/file target-folder "resources/public/files")]
       (is (.exists dir))
       (is (.isDirectory dir)))))
-
-(deftest test-directory-creation-with-output-dir
-  (testing "directory is created in output directory"
-    (with-temp-dir [output-dir "kit-gen-test"]
-      (generate :html {:html {:feature-flag :default}
-                       :output-dir output-dir})
-      (let [dir (jio/file output-dir "resources/public/files")]
-        (is (.exists dir))
-        (is (.isDirectory dir))))))

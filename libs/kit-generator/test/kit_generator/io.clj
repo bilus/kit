@@ -25,6 +25,7 @@
 (def relative-path io/relative-path)
 (def clone-file io/clone-file)
 (def clone-folder io/clone-folder)
+(def concat-path io/concat-path)
 
 (defn- file-mismatches
   "Checks content against expectation. Returns set of errors or nil if matches."

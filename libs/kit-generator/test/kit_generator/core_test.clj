@@ -11,28 +11,20 @@
 
 (defn test-install-module*
   "Tests installing a module and verifies that the expected files are present
-   in the target directory after installation.
-
-   If output-dir is provided, the project will still be set up in default-project-root
-   but the results of the installation will be written to output-dir. Output dir will
-   contain the original project + modifications from the installed module."
-  [module-key {:keys [output-dir] :as opts} expected-files]
-  (let [project-root (or output-dir default-project-root)
-        kit-edn-path (prepare-project module-repo-path {:project-root project-root})
-        target-dir (or output-dir project-root)]
+   in the project folder after installation."
+  [project-root module-key opts expected-files]
+  (let [kit-edn-path (prepare-project {:project-root project-root})]
     (is (not (module-installed? module-key {:project-root project-root})))
     (is (= :done (kit/install-module module-key kit-edn-path opts)))
-    (is (module-installed? module-key {:project-root target-dir})
-        "Source project directory should not be modified when output-dir is specified")
-    (is (empty? (io/folder-mismatches target-dir
+    (is (module-installed? module-key {:project-root project-root}))
+    (is (empty? (io/folder-mismatches project-root
                                       expected-files
                                       {:filter #(not (str/starts-with? % "modules/"))})))))
 
 (deftest test-install-module
-  ; Run the test twice: once using the default target dir, and once using a custom output dir.
   (io/with-temp-dir [temp-dir "kit-gen-test"]
-    (doseq [output-dir [nil temp-dir]]
-      (are [module-key opts expected-files] (test-install-module* module-key (merge opts {:output-dir output-dir}) expected-files)
+    (doseq [project-root [default-project-root temp-dir]]
+      (are [module-key opts expected-files] (test-install-module* project-root module-key opts expected-files)
         :meta {}                                {"resources/public/css/app.css"        []
                                                  "kit.edn"                             []}
         :meta {:feature-flag :extras}           {"resources/public/css/styles.css"     []
@@ -66,7 +58,7 @@
         ))))
 ;; TODO: accept-hooks? works
 (deftest test-install-module-cyclic-dependency
-  (let [kit-edn-path (prepare-project module-repo-path)]
+  (let [kit-edn-path (prepare-project)]
     (is (thrown? Exception
                  (kit/install-module :meta kit-edn-path {:feature-flag :extras
                                                          :db {:feature-flag :cyclic}})))
@@ -91,8 +83,8 @@
                              dep-tree))
   (clojure.test/run-tests 'kit-generator.core-test)
   (require '[kit.generator.modules.dependencies :as deps])
-  (deps/dependency-list :meta (kit/read-kit-edn (prepare-project module-repo-path)) {:feature-flag :full
-                                                                                     :db          {:feature-flag :migrations}})
+  (deps/dependency-list :meta (kit/read-kit-edn (prepare-project)) {:feature-flag :full
+                                                                    :db          {:feature-flag :migrations}})
 
 ;
   )

@@ -15,8 +15,7 @@
 
  :with-adv-hooks
 ;; Demonstrates that hooks run in project dir so you can use relative
-;; paths and that they have access to project files, even outside or
-;; project-root (when :output-dir opt is used).
+;; paths because cwd is set to project root before running hooks.
  {:hooks {:post-install
           ["cp resources/public/css/app.css resources/public/css/app.css.bak"]}
   :feature-requires [:default]}}
