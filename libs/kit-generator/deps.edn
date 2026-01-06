@@ -15,7 +15,11 @@
            com.stuartsierra/dependency           {:mvn/version "1.0.0"}}
  :aliases {:dev
            {:extra-paths ["test"]
-            :extra-deps  {nubank/matcher-combinators {:mvn/version "3.9.2"}}}
+            :extra-deps  {nubank/matcher-combinators {:mvn/version "3.9.2"}
+                          com.nextjournal/beholder   {:mvn/version "1.0.3"}
+                          autochrome/autochrome      {:mvn/version "0.1.0-SNAPSHOT"}
+                          javax.xml.bind/jaxb-api    {:mvn/version "2.3.1"}}
+            :jvm-opts    ["-Djdk.attach.allowAttachSelf"]}
            :cider
            {:extra-deps {nrepl/nrepl       {:mvn/version "1.5.1"}
                          cider/cider-nrepl {:mvn/version "0.58.0"}}

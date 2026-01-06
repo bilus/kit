@@ -96,6 +96,13 @@
   (->> contents
        (spit target)))
 
+(defn create-files
+  "Creates files in dir from a map of relative paths to contents.
+   Inverse of ls-R."
+  [dir files]
+  (doseq [[path contents] files]
+    (write-file contents (concat-path dir path))))
+
 (defn write-edn
   "Writes EDN contents to target file, creating parent directories as needed."
   [data target]

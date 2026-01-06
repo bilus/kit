@@ -5,7 +5,12 @@
    [clojure.java.io :as jio]
    [clojure.test :as t])
   (:import
-   java.io.File))
+   [java.io File]
+   [java.nio.file
+    CopyOption
+    Files
+    Path
+    StandardCopyOption]))
 
 (defn str->edn [config]
   (edn/read-string {:default tagged-literal} config))
@@ -45,22 +50,34 @@
 
 (defn relative-path
   "Returns path as relative to base-path"
+  {:test (fn []
+           (t/is (= "docs/file.txt"
+                    (relative-path "/home/user/docs/file.txt" "/home/user")))
+           (t/is (= "docs/file.txt"
+                    (relative-path "home/user/docs/file.txt" "home/user")))
+           (t/is (= "/FOO/file.txt"
+                    (relative-path "/FOO/file.txt" "/BAR")))
+           (t/is (= "file.txt"
+                    (relative-path "file.txt" "."))))}
   [path base-path]
-  (.toString (.relativize (.toURI (jio/file base-path))
-                          (.toURI (jio/file path)))))
+  (.getPath (.relativize (.toURI (jio/file base-path))
+                         (.toURI (jio/file path)))))
 
 (defn clone-file
   "Copy file from `src` to `target`, creating parent directories as needed."
   [src tgt]
   (jio/make-parents tgt)
-  (let [source-file (jio/file src)
-        target-file (jio/file tgt)]
-    (jio/copy source-file target-file)))
+  (let [srcPath (.toPath (jio/file src))
+        tgtPath (.toPath (jio/file tgt))]
+    (Files/copy srcPath tgtPath (into-array CopyOption [StandardCopyOption/REPLACE_EXISTING
+                                                        StandardCopyOption/COPY_ATTRIBUTES]))))
 
 (defn clone-folder
   "Erase `target` then copy all files from `src` to `target` recursively."
   [src target & {:keys [filter] :or {filter (constantly true)}}]
   (delete-folder target)
+  ;; TODO: It can be optimized by walking the file tree and skipping directories
+  ;; that don't match the filter.
   (let [files (file-seq (clojure.java.io/file src))]
     (doseq [f files]
       (let [target-file (clojure.java.io/file target
@@ -95,5 +112,26 @@
   (or (.getParent (jio/file path))
       "."))
 
+;; TODO: Functions like this should probably use canonicalized paths to avoid issues with relative paths.
+(defn parent? [base-dir path]
+  (= base-dir (parent-name path)))
+
+(defn last-modified
+  "Returns the last modification timestamp of the file at `path` in milliseconds."
+  [path]
+  (.lastModified (jio/file path)))
+
+(defn newer?
+  "Returns true if the file at `path1` was modified more recently than the file at `path2`."
+  [path1 path2]
+  (> (last-modified path1) (last-modified path2)))
+
+(defn binary-file? [path]
+  (let [mime (Files/probeContentType (.toPath (jio/file path)))]
+    (and mime (not (.startsWith mime "text/")))))
+
 (comment
+  (binary-file? "/tmp/preview/resources/public/img/kit.png")
+  (binary-file? "/tmp/preview/README.md")
+  (binary-file? "/tmp/preview/package.json")
   (t/run-tests 'kit.generator.io))
